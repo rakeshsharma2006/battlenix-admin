@@ -12,6 +12,7 @@ export type MatchStatus =
   | 'CANCELLED';
 
 export interface Match {
+  chatEnabled: boolean;
   _id: string;
   title: string;
   game: string;
@@ -30,6 +31,7 @@ export interface Match {
   map?: string;
   mode?: string;
   players?: { _id: string; username: string }[];
+  chatEnabled?: boolean;
 }
 
 export interface Withdrawal {

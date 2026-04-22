@@ -127,7 +127,7 @@ export default function MatchesPage() {
       const res = await fetch(`/api/proxy/matches/${matchId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'ready' }),
+        body: JSON.stringify({ status: 'READY' }),
       });
       
       if (res.ok) {
