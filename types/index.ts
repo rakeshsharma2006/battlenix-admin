@@ -28,7 +28,6 @@ export interface Match {
   winnerUpiId?: string | null;
   prizeAmount?: number;
   prizeBreakdown?: { playerPrize: number; managerCut: number; adminCut: number; teamSize: number; prizePerMember: number };
-  chatEnabled?: boolean;
   map?: string;
   mode?: string;
   players?: { _id: string; username: string }[];
