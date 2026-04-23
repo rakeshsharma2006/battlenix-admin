@@ -30,19 +30,20 @@ export function useMatches() {
   };
 
   const updateStatus = async (id: string, status: Match['status']) => {
+    const normalizedStatus = status.toUpperCase() as Match['status'];
     let previousMatches: Match[] = [];
 
     setMatches((currentMatches) => {
       previousMatches = currentMatches;
 
       return currentMatches.map((match) => (
-        match._id === id ? { ...match, status } : match
+        match._id === id ? { ...match, status: normalizedStatus } : match
       ));
     });
 
     try {
       const response = await api.patch<{ match: Match }>(`/proxy/matches/${id}/status`, {
-        status: status.toUpperCase(),
+        status: normalizedStatus,
       });
       const updatedMatch = response.data.match;
 

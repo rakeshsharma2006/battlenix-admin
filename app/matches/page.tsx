@@ -111,34 +111,29 @@ export default function MatchesPage() {
     }
   };
 
-  const markReady = async (matchId: string) => {
-    const match = matches.find((m) => m._id === matchId);
-    if (!match) return;
-
-    if (match.playersCount < match.maxPlayers) {
-      const confirmed = window.confirm(
-        `Room has ${match.playersCount}/${match.maxPlayers} players. Mark as READY with partial room?`
-      );
-      if (!confirmed) return;
-    }
-    
+  const handleMarkReady = async (matchId: string) => {
     setProcessingId(matchId);
     try {
       const res = await fetch(`/api/proxy/matches/${matchId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ status: 'READY' }),
       });
-      
-      if (res.ok) {
-        toast.success('Match marked as ready');
-        await refetch();
-      } else {
-        const data = await res.json().catch(() => ({}));
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
         toast.error(data.message || 'Failed to mark ready');
+        return;
       }
+
+      toast.success('Match marked as READY!');
+      await refetch();
     } catch {
-      toast.error('Error marking ready');
+      toast.error('Something went wrong');
     } finally {
       setProcessingId(null);
     }
@@ -192,8 +187,9 @@ export default function MatchesPage() {
     setOpenMenuId(null);
 
     try {
-      await updateStatus(match._id, nextStatus);
-      toast.success(`Match updated to ${nextStatus}.`);
+      const normalizedStatus = nextStatus.toUpperCase() as Match['status'];
+      await updateStatus(match._id, normalizedStatus);
+      toast.success(`Match updated to ${normalizedStatus}.`);
     } catch {
       // Hook already handles the error state and toast.
     } finally {
@@ -464,16 +460,14 @@ export default function MatchesPage() {
             {normalizedStatus === 'upcoming' && (
               <div className="flex flex-col items-end mr-2">
                 <button
-                  onClick={() => markReady(match._id)}
+                  type="button"
+                  onClick={() => void handleMarkReady(match._id)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium"
                   style={{
-                    padding: '6px 12px',
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 600,
+                    background: 'rgba(245,158,11,0.1)',
+                    color: '#F59E0B',
+                    border: '1px solid rgba(245,158,11,0.2)',
                     cursor: 'pointer',
-                    background: 'rgba(202,138,4,0.1)',
-                    color: '#EAB308',
-                    border: '1px solid rgba(202,138,4,0.2)',
                   }}
                 >
                   ⚡ Mark Ready

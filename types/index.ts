@@ -31,7 +31,6 @@ export interface Match {
   map?: string;
   mode?: string;
   players?: { _id: string; username: string }[];
-  chatEnabled?: boolean;
 }
 
 export interface Withdrawal {
