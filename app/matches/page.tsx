@@ -32,6 +32,66 @@ type PublishModalState = {
   title: string;
 } | null;
 
+type MatchPlayerDetails = {
+  _id?: string;
+  username?: string | null;
+  gameUid?: string | null;
+  gameUID?: string | null;
+  gameName?: string | null;
+  upiId?: string | null;
+  trustScore?: number | null;
+  isFlagged?: boolean | null;
+};
+
+type MatchPlayerApiShape = MatchPlayerDetails & {
+  userId?: MatchPlayerDetails | string | null;
+};
+
+type MatchPlayer = {
+  _id: string;
+  username?: string | null;
+  gameUid?: string | null;
+  gameName?: string | null;
+  upiId?: string | null;
+  trustScore: number;
+  isFlagged: boolean;
+  userId?: MatchPlayerDetails | null;
+};
+
+const normalizeMatchPlayer = (player: unknown, index: number): MatchPlayer => {
+  const candidate: MatchPlayerApiShape =
+    player && typeof player === 'object' ? (player as MatchPlayerApiShape) : {};
+
+  const nestedUser =
+    candidate.userId && typeof candidate.userId === 'object' && !Array.isArray(candidate.userId)
+      ? candidate.userId
+      : null;
+
+  const playerId =
+    candidate._id ??
+    nestedUser?._id ??
+    (typeof candidate.userId === 'string' ? candidate.userId : null) ??
+    `player-${index}`;
+
+  const trustScore =
+    typeof candidate.trustScore === 'number'
+      ? candidate.trustScore
+      : typeof nestedUser?.trustScore === 'number'
+        ? nestedUser.trustScore
+        : 0;
+
+  return {
+    _id: String(playerId),
+    username: candidate.username ?? nestedUser?.username ?? null,
+    gameUid: candidate.gameUid ?? candidate.gameUID ?? nestedUser?.gameUid ?? nestedUser?.gameUID ?? null,
+    gameName: candidate.gameName ?? nestedUser?.gameName ?? null,
+    upiId: candidate.upiId ?? nestedUser?.upiId ?? null,
+    trustScore,
+    isFlagged: Boolean(candidate.isFlagged ?? nestedUser?.isFlagged ?? false),
+    userId: nestedUser,
+  };
+};
+
 export default function MatchesPage() {
   const router = useRouter();
   const { matches, loading, error, refetch, updateStatus } = useMatches();
@@ -46,7 +106,7 @@ export default function MatchesPage() {
   const [playersModal, setPlayersModal] = useState<{
     matchId: string;
     title: string;
-    players: any[];
+    players: MatchPlayer[];
   } | null>(null);
 
   const [declareModal, setDeclareModal] = useState<{
@@ -237,44 +297,26 @@ export default function MatchesPage() {
     setPublishing(false);
   };
 
-  const loadMatchPlayers = async (match: any) => {
+  const loadMatchPlayers = async (match: Match) => {
+    setLoadingPlayers(true);
     try {
-      const res = await fetch(`/api/proxy/matches/${match._id}`, { credentials: 'include' });
+      const res = await fetch(`/api/proxy/matches/${match._id}/players`, { credentials: 'include' });
       const data = await res.json();
-      
-      // For each player, also fetch their profile
-      const players = data.match?.players ?? [];
-      
-      // Fetch detailed info for each player
-      const detailedPlayers = await Promise.all(
-        players.map(async (p: any) => {
-          try {
-            const userId = p._id ?? p;
-            const profileRes = await fetch(`/api/proxy/player/${userId}`, { credentials: 'include' });
-            const profileData = await profileRes.json();
-            return {
-              _id: userId,
-              username: p.username ?? profileData.profile?.username ?? 'Unknown',
-              gameUID: profileData.profile?.gameUID ?? null,
-              gameName: profileData.profile?.gameName ?? null,
-              upiId: profileData.profile?.upiId ?? null,
-              trustScore: profileData.profile?.trustScore ?? 100,
-              isFlagged: profileData.profile?.isFlagged ?? false,
-            };
-          } catch {
-            return {
-              _id: p._id ?? p,
-              username: p.username ?? 'Unknown',
-              gameUID: null,
-              gameName: null,
-              upiId: null,
-              trustScore: 100,
-              isFlagged: false,
-            };
-          }
-        })
-      );
-      
+      console.log('Players data:', data);
+
+      if (!res.ok) {
+        toast.error(data.message || 'Failed to load players');
+        return;
+      }
+
+      const playersSource = Array.isArray(data)
+        ? data
+        : data.players ?? data.match?.players ?? data.data?.players ?? [];
+
+      const detailedPlayers = Array.isArray(playersSource)
+        ? playersSource.map((player, index) => normalizeMatchPlayer(player, index))
+        : [];
+
       setPlayersModal({
         matchId: match._id,
         title: match.title,
@@ -282,6 +324,8 @@ export default function MatchesPage() {
       });
     } catch {
       toast.error('Failed to load players');
+    } finally {
+      setLoadingPlayers(false);
     }
   };
 
@@ -1197,8 +1241,14 @@ export default function MatchesPage() {
                   <p style={{ color: '#94A3B8' }}>No players have joined yet</p>
                 </div>
               ) : (
-                playersModal.players.map((player, index) => (
-                  <div key={player._id} className="p-4 rounded-xl"
+                playersModal.players.map((player, index) => {
+                  const username = player.username || player.userId?.username || '—';
+                  const gameUid = player.gameUid || player.userId?.gameUid || player.userId?.gameUID || '—';
+                  const gameName = player.gameName || player.userId?.gameName || '—';
+                  const upiId = player.upiId || player.userId?.upiId || null;
+
+                  return (
+                    <div key={player._id} className="p-4 rounded-xl"
                     style={{
                       background: '#1A1A28',
                       border: `1px solid ${player.isFlagged ? 'rgba(239,68,68,0.3)' : '#1E2035'}`,
@@ -1217,7 +1267,7 @@ export default function MatchesPage() {
                           <p className="text-xs uppercase tracking-wider mb-1"
                             style={{ color: '#475569' }}>Username</p>
                           <div className="flex items-center gap-2">
-                            <p className="text-white font-semibold">{player.username}</p>
+                            <p className="text-white font-semibold">{username}</p>
                             {player.isFlagged && (
                               <span className="text-xs px-1.5 py-0.5 rounded font-bold"
                                 style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
@@ -1248,8 +1298,8 @@ export default function MatchesPage() {
                           <p className="text-xs uppercase tracking-wider mb-1"
                             style={{ color: '#475569' }}>Game UID</p>
                           <p className="font-mono text-sm"
-                            style={{ color: player.gameUID ? '#F1F5F9' : '#475569' }}>
-                            {player.gameUID ?? '—'}
+                            style={{ color: gameUid !== '—' ? '#F1F5F9' : '#475569' }}>
+                            {gameUid}
                           </p>
                         </div>
 
@@ -1258,8 +1308,8 @@ export default function MatchesPage() {
                           <p className="text-xs uppercase tracking-wider mb-1"
                             style={{ color: '#475569' }}>Game Name</p>
                           <p className="text-sm"
-                            style={{ color: player.gameName ? '#F1F5F9' : '#475569' }}>
-                            {player.gameName ?? '—'}
+                            style={{ color: gameName !== '—' ? '#F1F5F9' : '#475569' }}>
+                            {gameName}
                           </p>
                         </div>
 
@@ -1269,13 +1319,13 @@ export default function MatchesPage() {
                             style={{ color: '#475569' }}>UPI ID</p>
                           <div className="flex items-center gap-2">
                             <p className="font-mono text-sm"
-                              style={{ color: player.upiId ? '#F1F5F9' : '#475569' }}>
-                              {player.upiId ?? 'Not set'}
+                              style={{ color: upiId ? '#F1F5F9' : '#475569' }}>
+                              {upiId || 'Not set'}
                             </p>
-                            {player.upiId && (
+                            {upiId && (
                               <button
                                 onClick={() => {
-                                  void navigator.clipboard.writeText(player.upiId);
+                                  void navigator.clipboard.writeText(upiId);
                                   toast.success('UPI copied!');
                                 }}
                                 className="px-2 py-0.5 rounded text-xs cursor-pointer"
@@ -1291,8 +1341,9 @@ export default function MatchesPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
 
