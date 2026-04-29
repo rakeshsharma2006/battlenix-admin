@@ -63,6 +63,7 @@ export default function EditReferralModal({ open, referral, onClose, onUpdated }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!referral) return;
     setSubmitting(true);
     try {
