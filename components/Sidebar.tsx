@@ -8,6 +8,7 @@ import {
   Clock,
   CreditCard,
   LayoutDashboard,
+  Link2,
   LogOut,
   Sword,
   Swords,
@@ -42,6 +43,7 @@ export default function Sidebar() {
     { href: '/slots', label: 'Slot Manager', icon: Clock },
     { href: '/payouts', label: 'Payouts', icon: CreditCard },
     { href: '/players', label: 'Players', icon: Users },
+    { href: '/referrals', label: '🔗 Referrals', icon: Link2 },
     { href: '/chat', label: 'Chats', icon: MessageSquare },
     { href: '/help-center', label: '🎧 Help Center', icon: MessageSquare, badge: openTicketCount },
   ];

@@ -53,6 +53,10 @@ const PAGE_META = {
     title: 'Payments',
     subtitle: 'Track financial activity across deposits, fees, and prizes.',
   },
+  '/referrals': {
+    title: 'Referrals',
+    subtitle: 'Track creators, commissions, conversions and payouts.',
+  },
 } as const;
 
 export function getPageMeta(pathname: string) {
