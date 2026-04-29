@@ -66,12 +66,43 @@ export default function EditReferralModal({ open, referral, onClose, onUpdated }
     if (!referral) return;
     setSubmitting(true);
     try {
-      await updateReferral(referral._id, form);
+      const payload: any = {
+        ...form,
+        commissionPerUser: form.commissionPerUser !== undefined ? Number(form.commissionPerUser) : undefined,
+        commissionPercent: form.commissionPercent !== undefined ? Number(form.commissionPercent) : undefined,
+        rewardCoinsToUser: form.rewardCoinsToUser !== undefined ? Number(form.rewardCoinsToUser) : undefined,
+        rewardCashToUser: form.rewardCashToUser !== undefined ? Number(form.rewardCashToUser) : undefined,
+      };
+
+      if (!payload.expiresAt) {
+        payload.expiresAt = null;
+      } else {
+        payload.expiresAt = new Date(payload.expiresAt).toISOString();
+      }
+
+      if (!payload.channelUrl) {
+        payload.channelUrl = '';
+      }
+      if (!payload.channelName) {
+        delete payload.channelName;
+      }
+      if (!payload.notes) {
+        delete payload.notes;
+      }
+
+      console.log('Submitting edit payload:', payload);
+
+      await updateReferral(referral._id, payload);
       toast.success('Referral updated!');
       onUpdated();
       onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to update.'));
+    } catch (err: any) {
+      console.error('API error:', err.response?.data || err);
+      let msg = getErrorMessage(err, 'Failed to update.');
+      if (err.response?.data?.errors?.length) {
+        msg = err.response.data.errors.map((e: any) => `${e.path}: ${e.message}`).join(', ');
+      }
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

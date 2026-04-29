@@ -84,7 +84,36 @@ export default function CreateReferralModal({ open, onClose, onCreated }: Create
 
     setSubmitting(true);
     try {
-      await createReferral({ ...form, code: form.code.toUpperCase().trim() });
+      const payload: any = {
+        ...form,
+        code: form.code.toUpperCase().trim(),
+        commissionPerUser: Number(form.commissionPerUser),
+        commissionPercent: Number(form.commissionPercent),
+        rewardCoinsToUser: Number(form.rewardCoinsToUser),
+        rewardCashToUser: Number(form.rewardCashToUser),
+      };
+
+      if (!payload.expiresAt) {
+        delete payload.expiresAt;
+      } else {
+        payload.expiresAt = new Date(payload.expiresAt).toISOString();
+      }
+
+      if (!payload.channelUrl) {
+        delete payload.channelUrl;
+      }
+      if (!payload.channelName) {
+        delete payload.channelName;
+      }
+      if (!payload.notes) {
+        delete payload.notes;
+      }
+
+      console.log('Submitting payload:', payload);
+
+      const res = await createReferral(payload);
+      console.log('API response:', res);
+      
       toast.success('Referral code created!');
       onCreated();
       onClose();
@@ -102,8 +131,13 @@ export default function CreateReferralModal({ open, onClose, onCreated }: Create
         expiresAt: null,
         notes: '',
       });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to create referral code.'));
+    } catch (err: any) {
+      console.error('API error:', err.response?.data || err);
+      let msg = getErrorMessage(err, 'Failed to create referral code.');
+      if (err.response?.data?.errors?.length) {
+        msg = err.response.data.errors.map((e: any) => `${e.path}: ${e.message}`).join(', ');
+      }
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
