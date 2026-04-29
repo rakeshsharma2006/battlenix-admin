@@ -12,6 +12,7 @@ import type { ReferralCode, Platform } from '@/types/referral';
 type ReferralTableProps = {
   data: ReferralCode[];
   loading: boolean;
+  error?: string | null;
   onViewDetail: (r: ReferralCode) => void;
   onEdit: (r: ReferralCode) => void;
   onShowQr: (r: ReferralCode) => void;
@@ -149,6 +150,7 @@ function ActionMenu({
 export default function ReferralTable({
   data,
   loading,
+  error,
   onViewDetail,
   onEdit,
   onShowQr,
@@ -220,6 +222,23 @@ export default function ReferralTable({
         overflow: 'hidden',
       }}
     >
+      {error && (
+        <div
+          style={{
+            padding: '10px 16px',
+            background: 'rgba(239,68,68,0.1)',
+            borderBottom: `1px solid ${ADMIN_COLORS.error}40`,
+            color: ADMIN_COLORS.error,
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>⚠️</span> {error}
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400 }}>
           <thead>

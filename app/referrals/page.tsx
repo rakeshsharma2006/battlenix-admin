@@ -37,6 +37,7 @@ export default function ReferralsPage() {
   const [summary, setSummary] = useState<ReferralSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -54,12 +55,21 @@ export default function ReferralsPage() {
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
+    setListError(null);
     try {
-      const resp = await fetchAllReferrals(1, 500);
+      // Use a smaller limit (50) to avoid backend validation errors (max limit usually 100)
+      const page = Number(1);
+      const limit = Number(50);
+      const resp = await fetchAllReferrals(page, limit);
       setCodes(resp.codes);
       setSummary(resp.summary);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to load referrals.'));
+      const msg = getErrorMessage(err, 'Failed to load referrals.');
+      setListError(msg);
+      // Only show global toast if it's the initial load, not a background refresh
+      if (!silent) {
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -285,6 +295,7 @@ export default function ReferralsPage() {
           <ReferralTable
             data={filtered}
             loading={loading}
+            error={listError}
             onViewDetail={(r) => setDetailTarget(r)}
             onEdit={(r) => setEditTarget(r)}
             onShowQr={(r) => setQrTarget(r)}

@@ -69,6 +69,7 @@ export default function EditReferralModal({ open, referral, onClose, onUpdated }
     try {
       const payload: any = {
         ...form,
+        creatorName: form.creatorName?.trim(),
         commissionPerUser: form.commissionPerUser !== undefined ? Number(form.commissionPerUser) : undefined,
         commissionPercent: form.commissionPercent !== undefined ? Number(form.commissionPercent) : undefined,
         rewardCoinsToUser: form.rewardCoinsToUser !== undefined ? Number(form.rewardCoinsToUser) : undefined,
@@ -81,13 +82,19 @@ export default function EditReferralModal({ open, referral, onClose, onUpdated }
         payload.expiresAt = new Date(payload.expiresAt).toISOString();
       }
 
-      if (!payload.channelUrl) {
+      if (payload.channelUrl) {
+        payload.channelUrl = payload.channelUrl.trim();
+        if (payload.channelUrl && !/^https?:\/\//i.test(payload.channelUrl)) {
+          payload.channelUrl = 'https://' + payload.channelUrl;
+        }
+      } else {
         payload.channelUrl = '';
       }
-      if (!payload.channelName) {
+
+      if (!payload.channelName?.trim()) {
         delete payload.channelName;
       }
-      if (!payload.notes) {
+      if (!payload.notes?.trim()) {
         delete payload.notes;
       }
 

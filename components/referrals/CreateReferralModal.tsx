@@ -85,9 +85,10 @@ export default function CreateReferralModal({ open, onClose, onCreated }: Create
 
     setSubmitting(true);
     try {
+      const sanitizedCode = form.code.toUpperCase().replace(/[^A-Z0-9_]/g, '');
       const payload: any = {
         ...form,
-        code: form.code.toUpperCase().trim(),
+        code: sanitizedCode,
         commissionPerUser: Number(form.commissionPerUser),
         commissionPercent: Number(form.commissionPercent),
         rewardCoinsToUser: Number(form.rewardCoinsToUser),
@@ -100,13 +101,19 @@ export default function CreateReferralModal({ open, onClose, onCreated }: Create
         payload.expiresAt = new Date(payload.expiresAt).toISOString();
       }
 
-      if (!payload.channelUrl) {
+      if (payload.channelUrl) {
+        payload.channelUrl = payload.channelUrl.trim();
+        if (payload.channelUrl && !/^https?:\/\//i.test(payload.channelUrl)) {
+          payload.channelUrl = 'https://' + payload.channelUrl;
+        }
+      } else {
         delete payload.channelUrl;
       }
-      if (!payload.channelName) {
+
+      if (!payload.channelName?.trim()) {
         delete payload.channelName;
       }
-      if (!payload.notes) {
+      if (!payload.notes?.trim()) {
         delete payload.notes;
       }
 
