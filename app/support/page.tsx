@@ -1,56 +1,100 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+type Conversation = {
+  chatId?: string
+  userId: string
+  _id?: string
+  username?: string
+  email?: string | null
+  lastMessage?: string
+  unreadCount?: number
+}
+
+type SupportMessage = {
+  _id: string
+  message?: string
+  text?: string
+  isAdmin?: boolean
+  createdAt: string
+}
+
+const getConversationUserId = (conversation: Conversation) =>
+  conversation._id || conversation.userId
 
 export default function SupportPage() {
-  const [conversations, setConversations] = useState<any[]>([])
-  const [selectedUser, setSelectedUser] = useState<any>(null)
-  const [messages, setMessages] = useState<any[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedUser, setSelectedUser] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<SupportMessage[]>([])
   const [replyText, setReplyText] = useState('')
   const [loading, setLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    loadConversations()
-  }, [])
-
-  useEffect(() => {
-    if (selectedUser) {
-      loadMessages(selectedUser._id || selectedUser.userId)
+  const loadConversations = useCallback(async () => {
+    const res = await fetch('/api/proxy/chat/support/all', {
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      setConversations([])
+      setLoading(false)
+      return
     }
-  }, [selectedUser])
-
-  async function loadConversations() {
-    const res = await fetch('/api/proxy/chat/support/all')
     const data = await res.json()
     setConversations(data.conversations || [])
     setLoading(false)
-  }
+  }, [])
 
-  async function loadMessages(userId: string) {
-    const res = await fetch(`/api/proxy/chat/support/${userId}`)
+  const loadMessages = useCallback(async (userId: string) => {
+    const res = await fetch(`/api/proxy/chat/support/${userId}`, {
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      setMessages([])
+      return
+    }
     const data = await res.json()
     setMessages(data.messages || [])
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView()
     }, 100)
-  }
+  }, [])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadConversations()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [loadConversations])
+
+  useEffect(() => {
+    if (selectedUser) {
+      const timeoutId = window.setTimeout(() => {
+        void loadMessages(getConversationUserId(selectedUser))
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
+  }, [loadMessages, selectedUser])
 
   async function sendReply() {
     if (!replyText.trim() || !selectedUser) return
     
-    await fetch(
+    const res = await fetch(
       `/api/proxy/chat/support/${selectedUser._id || selectedUser.userId}/reply`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ message: replyText }),
       }
     )
-    
+
+    if (!res.ok) return
+
     setReplyText('')
-    loadMessages(selectedUser._id || selectedUser.userId)
+    await loadMessages(getConversationUserId(selectedUser))
+    await loadConversations()
   }
 
   return (
@@ -97,7 +141,7 @@ export default function SupportPage() {
                     {conv.lastMessage || '...'}
                   </p>
                 </div>
-                {conv.unreadCount > 0 && (
+                {(conv.unreadCount || 0) > 0 && (
                   <span className="bg-purple-600 text-white text-xs rounded-full px-2 py-0.5">
                     {conv.unreadCount}
                   </span>
@@ -143,7 +187,7 @@ export default function SupportPage() {
                       ? 'bg-purple-700 text-white rounded-br-sm'
                       : 'bg-gray-800 text-white rounded-bl-sm'
                   }`}>
-                    <p>{msg.message}</p>
+                    <p>{msg.message || msg.text}</p>
                     <p className="text-xs opacity-60 mt-1">
                       {new Date(msg.createdAt).toLocaleTimeString()}
                     </p>

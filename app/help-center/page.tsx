@@ -1,7 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 // Types
+type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED'
+type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+
 type Ticket = {
   _id: string
   ticketNumber: string
@@ -20,8 +23,7 @@ type Ticket = {
   }>
   status: 'OPEN' | 'IN_PROGRESS' | 
           'RESOLVED' | 'CLOSED'
-  priority: 'LOW' | 'MEDIUM' | 
-            'HIGH' | 'URGENT'
+  priority: TicketPriority
   replies: Array<{
     adminUsername: string
     message: string
@@ -35,11 +37,16 @@ type Ticket = {
   createdAt: string
 }
 
+type SupportStats = {
+  openCount?: number
+  urgentCount?: number
+}
+
 export default function HelpCenterPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<any>({})
+  const [stats, setStats] = useState<SupportStats>({})
   const [replyText, setReplyText] = useState('')
   const [replyStatus, setReplyStatus] = useState('')
   const [sending, setSending] = useState(false)
@@ -50,29 +57,36 @@ export default function HelpCenterPage() {
   })
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadTickets()
-    loadStats()
-  }, [filter])
-
-  async function loadTickets() {
+  const loadTickets = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams()
     if (filter.status) params.set('status', filter.status)
     if (filter.priority) params.set('priority', filter.priority)
     if (filter.category) params.set('category', filter.category)
     
-    const res = await fetch(`/api/proxy/support/admin/all?${params}`)
+    const res = await fetch(`/api/proxy/support/admin/all?${params}`, {
+      credentials: 'include',
+    })
     const data = await res.json()
     setTickets(data.tickets || [])
     setLoading(false)
-  }
+  }, [filter])
 
-  async function loadStats() {
-    const res = await fetch('/api/proxy/support/admin/stats')
+  const loadStats = useCallback(async () => {
+    const res = await fetch('/api/proxy/support/admin/stats', {
+      credentials: 'include',
+    })
     const data = await res.json()
     setStats(data)
-  }
+  }, [])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadTickets()
+      void loadStats()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [loadStats, loadTickets])
 
   async function sendReply() {
     if (!replyText.trim() || !selectedTicket) return
@@ -82,6 +96,7 @@ export default function HelpCenterPage() {
       `/api/proxy/support/admin/${selectedTicket._id}/reply`,
       {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },
@@ -93,35 +108,36 @@ export default function HelpCenterPage() {
     )
     
     if (res.ok) {
+      const data = await res.json()
+      const serverTicket = data.ticket as Partial<Ticket> | undefined
+      const nextReplies = serverTicket?.replies || [
+        ...selectedTicket.replies,
+        {
+          adminUsername: 'Admin',
+          message: replyText,
+          isAdminReply: true,
+          createdAt: new Date().toISOString(),
+        },
+      ]
+      const nextStatus = (serverTicket?.status || replyStatus || selectedTicket.status) as TicketStatus
+
       setReplyText('')
       setReplyStatus('')
-      // Reload ticket
-      const updated = tickets.map(t =>
+      const updated: Ticket[] = tickets.map(t =>
         t._id === selectedTicket._id
-          ? { 
-              ...t, 
-              status: replyStatus || t.status,
-              replies: [
-                ...t.replies, 
-                {
-                  adminUsername: 'Admin',
-                  message: replyText,
-                  isAdminReply: true,
-                  createdAt: new Date().toISOString(),
-                }
-              ] 
-            }
+          ? { ...t, ...serverTicket, status: nextStatus, replies: nextReplies }
           : t
       )
-      setTickets(updated as any)
-      setSelectedTicket(updated.find(t => t._id === selectedTicket._id) as any || null)
+      setTickets(updated)
+      setSelectedTicket(updated.find(t => t._id === selectedTicket._id) || null)
     }
     setSending(false)
   }
 
-  async function updateStatus(ticketId: string, status: string) {
+  async function updateStatus(ticketId: string, status: TicketStatus) {
     await fetch(`/api/proxy/support/admin/${ticketId}`, {
       method: 'PATCH',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json'
       },
@@ -129,7 +145,7 @@ export default function HelpCenterPage() {
     })
     loadTickets()
     if (selectedTicket?._id === ticketId) {
-      setSelectedTicket(prev => prev ? { ...prev, status: status as any } : null)
+      setSelectedTicket(prev => prev ? { ...prev, status } : null)
     }
   }
 
@@ -313,7 +329,7 @@ export default function HelpCenterPage() {
                 {/* Quick status change */}
                 <select
                   value={selectedTicket.status}
-                  onChange={e => updateStatus(selectedTicket._id, e.target.value)}
+                  onChange={e => updateStatus(selectedTicket._id, e.target.value as TicketStatus)}
                   className="bg-gray-800 text-white text-sm rounded-lg px-3 py-2 border border-gray-700"
                 >
                   <option value="OPEN">Open</option>

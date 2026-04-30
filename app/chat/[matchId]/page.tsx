@@ -37,7 +37,7 @@ export default function ChatPage() {
 
   const loadThreads = useCallback(async () => {
     try {
-      const response = await fetch(`/api/proxy/chat/${matchId}`, {
+      const response = await fetch(`/api/proxy/chat/${matchId}/threads`, {
         credentials: 'include',
       });
       const data = await response.json();
