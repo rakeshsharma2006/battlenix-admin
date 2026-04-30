@@ -1,33 +1,16 @@
-import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
+  BACKEND_URL,
   AUTH_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+  buildAccessCookieOptions,
   buildAuthCookieOptions,
-  signToken,
+  isAdminRole,
+  mapAdminUser,
 } from '@/lib/auth';
-import { connectDB } from '@/lib/db';
-import User from '@/models/User';
 
 const LEGACY_COOKIE_NAME = 'token';
-
-function looksLikeBcryptHash(value: string) {
-  return /^\$2[aby]\$\d{2}\$/.test(value);
-}
-
-function getUserDisplayName(user: { name?: string | null; email: string } & { get?: (path: string) => unknown }) {
-  const username = user.get?.('username');
-
-  if (typeof user.name === 'string' && user.name.trim()) {
-    return user.name;
-  }
-
-  if (typeof username === 'string' && username.trim()) {
-    return username;
-  }
-
-  return user.email.split('@')[0];
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,99 +25,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const user = await User.findOne({ email }).select('+password');
-
-    console.info('[auth/login] lookup complete', {
-      email,
-      userFound: Boolean(user),
+    const backendResponse = await fetch(`${BACKEND_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+      cache: 'no-store',
     });
+    const data = await backendResponse.json().catch(() => ({}));
 
-    if (!user) {
-      console.warn('[auth/login] user not found', { email });
+    if (!backendResponse.ok) {
       return NextResponse.json(
-        { message: 'Invalid email or password' },
-        { status: 401 }
+        { message: data.message || 'Invalid email or password' },
+        { status: backendResponse.status }
       );
     }
 
-    if (typeof user.password !== 'string' || !user.password) {
-      console.warn('[auth/login] user missing password', {
-        email,
-        userId: user._id.toString(),
-      });
+    const accessToken = data.accessToken || data.token;
+    const refreshToken = data.refreshToken;
+    const user = mapAdminUser(data.user || {});
 
+    if (!accessToken || !refreshToken || !isAdminRole(user.role)) {
       return NextResponse.json(
-        { message: 'Invalid email or password' },
-        { status: 401 }
+        { message: 'Admin access required' },
+        { status: 403 }
       );
     }
-
-    const passwordIsHashed = looksLikeBcryptHash(user.password);
-    let isPasswordValid = false;
-
-    if (passwordIsHashed) {
-      isPasswordValid = await bcrypt.compare(password, user.password);
-    } else {
-      isPasswordValid = password === user.password;
-
-      if (isPasswordValid) {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user.password = hashedPassword;
-        await user.save();
-
-        console.warn('[auth/login] migrated legacy plaintext password', {
-          email,
-          userId: user._id.toString(),
-        });
-      }
-    }
-
-    console.info('[auth/login] password check complete', {
-      email,
-      userId: user._id.toString(),
-      passwordIsHashed,
-      passwordMatch: isPasswordValid,
-    });
-
-    if (!isPasswordValid) {
-      console.warn('[auth/login] invalid password', {
-        email,
-        userId: user._id.toString(),
-      });
-
-      return NextResponse.json(
-        { message: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
-
-    const token = signToken(user._id.toString());
 
     const response = NextResponse.json(
       {
         message: 'Login successful',
-        user: {
-          _id: user._id.toString(),
-          name: getUserDisplayName(user),
-          email: user.email,
-          role: user.role,
-        },
+        user,
       },
       { status: 200 }
     );
 
     response.cookies.set(
       AUTH_COOKIE_NAME,
-      token,
+      accessToken,
+      buildAccessCookieOptions()
+    );
+    response.cookies.set(
+      REFRESH_COOKIE_NAME,
+      refreshToken,
       buildAuthCookieOptions()
     );
     response.cookies.set(LEGACY_COOKIE_NAME, '', buildAuthCookieOptions(0));
 
     console.info('[auth/login] login successful', {
       email,
-      userId: user._id.toString(),
+      userId: user._id,
     });
 
     return response;

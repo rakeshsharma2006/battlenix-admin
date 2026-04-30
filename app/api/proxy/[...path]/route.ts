@@ -1,7 +1,13 @@
 // app/api/proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
+import {
+  AUTH_COOKIE_NAME,
+  BACKEND_URL,
+  REFRESH_COOKIE_NAME,
+  buildAccessCookieOptions,
+  buildAuthCookieOptions,
+} from '@/lib/auth';
 
 type RouteContext = {
   params: Promise<{ path?: string[] }> | { path?: string[] };
@@ -15,50 +21,82 @@ async function handleProxy(request: NextRequest, context: RouteContext) {
   }
 
   const targetUrl = `${BACKEND_URL}/${path.join('/')}${request.nextUrl.search}`;
-  const headers = new Headers();
-  const contentType = request.headers.get('content-type');
-  const cookie = request.headers.get('cookie');
-  // Extract JWT token from cookie
-  let authToken: string | null = null;
-  if (cookie) {
-    const tokenMatch = cookie.match(/battlenix_admin_token=([^;]+)/);
-    if (tokenMatch) {
-      authToken = decodeURIComponent(tokenMatch[1]);
+  const buildHeaders = (accessToken?: string | null) => {
+    const headers = new Headers();
+    const contentType = request.headers.get('content-type');
+    const authorization = request.headers.get('authorization');
+    const accept = request.headers.get('accept');
+
+    if (contentType) {
+      headers.set('content-type', contentType);
     }
-  }
+
+    if (accessToken) {
+      headers.set('authorization', `Bearer ${accessToken}`);
+    } else if (authorization) {
+      headers.set('authorization', authorization);
+    }
+
+    if (accept) {
+      headers.set('accept', accept);
+    }
+
+    return headers;
+  };
+
+  const refreshAccessToken = async (refreshToken: string) => {
+    const refreshResponse = await fetch(`${BACKEND_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+      cache: 'no-store',
+    });
+
+    if (!refreshResponse.ok) {
+      return null;
+    }
+
+    const data = await refreshResponse.json().catch(() => ({}));
+    const accessToken = data.accessToken || data.token;
+    if (!accessToken) {
+      return null;
+    }
+
+    return {
+      accessToken: String(accessToken),
+      refreshToken: data.refreshToken ? String(data.refreshToken) : refreshToken,
+    };
+  };
+
+  const accessToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const refreshToken = request.cookies.get(REFRESH_COOKIE_NAME)?.value;
   const authorization = request.headers.get('authorization');
-  const accept = request.headers.get('accept');
-
-  if (contentType) {
-    headers.set('content-type', contentType);
-  }
-
-  if (cookie) {
-    headers.set('cookie', cookie);
-  }
-
-  // Prefer cookie token over Authorization header
-  if (authToken) {
-    headers.set('authorization', `Bearer ${authToken}`);
-  } else if (authorization) {
-    headers.set('authorization', authorization);
-  }
-
-  if (accept) {
-    headers.set('accept', accept);
-  }
+  const contentType = request.headers.get('content-type');
 
   try {
     const body = request.method === 'GET' || request.method === 'HEAD'
       ? undefined
       : await request.arrayBuffer();
 
-    const upstreamResponse = await fetch(targetUrl, {
+    const callUpstream = (token?: string | null) => fetch(targetUrl, {
       method: request.method,
-      headers,
+      headers: buildHeaders(token),
       body,
       cache: 'no-store',
     });
+
+    let upstreamResponse = await callUpstream(accessToken);
+    let nextAccessToken: string | null = null;
+    let nextRefreshToken: string | null = null;
+
+    if (upstreamResponse.status === 401 && refreshToken && !authorization && contentType !== 'multipart/form-data') {
+      const refreshed = await refreshAccessToken(refreshToken);
+      if (refreshed) {
+        nextAccessToken = refreshed.accessToken;
+        nextRefreshToken = refreshed.refreshToken;
+        upstreamResponse = await callUpstream(nextAccessToken);
+      }
+    }
 
     const responseHeaders = new Headers();
     const upstreamContentType = upstreamResponse.headers.get('content-type');
@@ -72,10 +110,25 @@ async function handleProxy(request: NextRequest, context: RouteContext) {
       responseHeaders.set('set-cookie', setCookie);
     }
 
-    return new NextResponse(await upstreamResponse.text(), {
+    const response = new NextResponse(await upstreamResponse.text(), {
       status: upstreamResponse.status,
       headers: responseHeaders,
     });
+
+    if (nextAccessToken) {
+      response.cookies.set(AUTH_COOKIE_NAME, nextAccessToken, buildAccessCookieOptions());
+    }
+
+    if (nextRefreshToken) {
+      response.cookies.set(REFRESH_COOKIE_NAME, nextRefreshToken, buildAuthCookieOptions());
+    }
+
+    if (upstreamResponse.status === 401) {
+      response.cookies.set(AUTH_COOKIE_NAME, '', buildAuthCookieOptions(0));
+      response.cookies.set(REFRESH_COOKIE_NAME, '', buildAuthCookieOptions(0));
+    }
+
+    return response;
   } catch {
     return NextResponse.json(
       { message: 'Unable to connect to the backend service.' },

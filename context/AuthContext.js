@@ -19,13 +19,19 @@ export const AuthProvider = ({ children }) => {
         setAdmin(data.user);
       } else {
         setAdmin(null);
+        if (window.location.pathname !== '/login') {
+          router.replace('/login');
+        }
       }
     } catch {
       setAdmin(null);
+      if (window.location.pathname !== '/login') {
+        router.replace('/login');
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     fetchMe();
