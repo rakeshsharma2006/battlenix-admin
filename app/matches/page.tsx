@@ -39,6 +39,12 @@ type MatchPlayerDetails = {
   gameUID?: string | null;
   gameName?: string | null;
   upiId?: string | null;
+  bgmiUID?: string | null;
+  bgmiName?: string | null;
+  bgmiUpiId?: string | null;
+  ffUID?: string | null;
+  ffName?: string | null;
+  ffUpiId?: string | null;
   trustScore?: number | null;
   isFlagged?: boolean | null;
 };
@@ -58,7 +64,32 @@ type MatchPlayer = {
   userId?: MatchPlayerDetails | null;
 };
 
-const normalizeMatchPlayer = (player: unknown, index: number): MatchPlayer => {
+const gameSpecificValue = (
+  candidate: MatchPlayerDetails,
+  nestedUser: MatchPlayerDetails | null,
+  game: string | undefined,
+  field: 'uid' | 'name' | 'upi',
+) => {
+  const isFreeFire = game === 'FREE_FIRE';
+
+  if (field === 'uid') {
+    return isFreeFire
+      ? candidate.ffUID ?? nestedUser?.ffUID ?? candidate.gameUID ?? candidate.gameUid ?? nestedUser?.gameUID ?? nestedUser?.gameUid ?? null
+      : candidate.bgmiUID ?? nestedUser?.bgmiUID ?? candidate.gameUID ?? candidate.gameUid ?? nestedUser?.gameUID ?? nestedUser?.gameUid ?? null;
+  }
+
+  if (field === 'name') {
+    return isFreeFire
+      ? candidate.ffName ?? nestedUser?.ffName ?? candidate.gameName ?? nestedUser?.gameName ?? null
+      : candidate.bgmiName ?? nestedUser?.bgmiName ?? candidate.gameName ?? nestedUser?.gameName ?? null;
+  }
+
+  return isFreeFire
+    ? candidate.ffUpiId ?? nestedUser?.ffUpiId ?? candidate.upiId ?? nestedUser?.upiId ?? null
+    : candidate.bgmiUpiId ?? nestedUser?.bgmiUpiId ?? candidate.upiId ?? nestedUser?.upiId ?? null;
+};
+
+const normalizeMatchPlayer = (player: unknown, index: number, game?: string): MatchPlayer => {
   const candidate: MatchPlayerApiShape =
     player && typeof player === 'object' ? (player as MatchPlayerApiShape) : {};
 
@@ -83,9 +114,9 @@ const normalizeMatchPlayer = (player: unknown, index: number): MatchPlayer => {
   return {
     _id: String(playerId),
     username: candidate.username ?? nestedUser?.username ?? null,
-    gameUid: candidate.gameUid ?? candidate.gameUID ?? nestedUser?.gameUid ?? nestedUser?.gameUID ?? null,
-    gameName: candidate.gameName ?? nestedUser?.gameName ?? null,
-    upiId: candidate.upiId ?? nestedUser?.upiId ?? null,
+    gameUid: gameSpecificValue(candidate, nestedUser, game, 'uid'),
+    gameName: gameSpecificValue(candidate, nestedUser, game, 'name'),
+    upiId: gameSpecificValue(candidate, nestedUser, game, 'upi'),
     trustScore,
     isFlagged: Boolean(candidate.isFlagged ?? nestedUser?.isFlagged ?? false),
     userId: nestedUser,
@@ -314,7 +345,7 @@ export default function MatchesPage() {
         : data.players ?? data.match?.players ?? data.data?.players ?? [];
 
       const detailedPlayers = Array.isArray(playersSource)
-        ? playersSource.map((player, index) => normalizeMatchPlayer(player, index))
+        ? playersSource.map((player, index) => normalizeMatchPlayer(player, index, match.game))
         : [];
 
       setPlayersModal({
